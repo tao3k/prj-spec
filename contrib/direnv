@@ -116,3 +116,27 @@ unset -f _prj_direnv_silence_requested
 
 # shellcheck disable=SC2034
 direnv_layout_dir="${PRJ_DATA_HOME}/direnv"
+
+# Activate devenv when the project declares a devenv configuration.
+if [[ -f "${PRJ_ROOT}/devenv.nix" || -f "${PRJ_ROOT}/devenv.yaml" ]]; then
+	if ! command -v devenv >/dev/null 2>&1; then
+		log_error "ERROR: devenv project detected but devenv is not available in PATH"
+		return 1
+	fi
+
+	_prj_devenv_args=()
+	if [[ -n "${DIRENV_PRJ_SILENCE+x}" ]]; then
+		_prj_devenv_args+=(--quiet)
+	fi
+
+	eval "$(devenv direnvrc "${_prj_devenv_args[@]}")"
+
+	if ((${#_prj_devenv_args[@]})); then
+		# Calling the generated function directly also skips direnv's `using` log.
+		use_devenv "${_prj_devenv_args[@]}"
+	else
+		use devenv
+	fi
+
+	unset _prj_devenv_args
+fi

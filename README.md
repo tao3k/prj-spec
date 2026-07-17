@@ -48,12 +48,12 @@ PRs to add your own are welcome!
 The `contrib/direnv` integration exports the PRJ base directories and keeps its
 status output quiet when it runs inside a Claude Code or Codex session.
 
-For projects using [devenv](https://devenv.sh/), source `contrib/devenv` from
-`.envrc`. It includes the base `contrib/direnv` integration, so devenv projects
-need only one entrypoint:
+For projects using [devenv](https://devenv.sh/), use the same single
+`contrib/direnv` entrypoint. It automatically activates devenv when the project
+contains `devenv.nix` or `devenv.yaml`:
 
 ```bash
-source /path/to/prj-spec/contrib/devenv
+source /path/to/prj-spec/contrib/direnv
 ```
 
 The devenv integration preserves normal logs in interactive development
