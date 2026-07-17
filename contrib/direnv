@@ -84,6 +84,28 @@ export PRJ_CONFIG_HOME
 export PRJ_CACHE_HOME
 export PRJ_DATA_HOME
 export PRJ_RUNTIME_DIR
+
+_prj_direnv_silence_requested() {
+	case "${DIRENV_SILENCE:-}" in
+		0 | false | FALSE | no | NO | off | OFF)
+			unset DIRENV_PRJ_SILENCE DIRENV_LOG_FORMAT
+			return 1
+			;;
+		1 | true | TRUE | yes | YES | on | ON) return 0 ;;
+	esac
+
+	[[ -n "${CLAUDE_CODE_SESSION_ID:-}" || -n "${CODEX_THREAD_ID:-}" ]]
+}
+
+# Agent sessions should not add project status noise to command output.
+if _prj_direnv_silence_requested; then
+	export DIRENV_SILENCE="${DIRENV_SILENCE:-1}"
+	export DIRENV_PRJ_SILENCE=1
+	export DIRENV_LOG_FORMAT=
+fi
+
+unset -f _prj_direnv_silence_requested
+
 [ -z ${DIRENV_PRJ_SILENCE+x} ] && log_status "PRJ_ROOT:        ${PRJ_ROOT}"
 [ -z ${DIRENV_PRJ_SILENCE+x} ] && log_status "PRJ_ID:          ${PRJ_ID-none}"
 [ -z ${DIRENV_PRJ_SILENCE+x} ] && log_status "PRJ_CONFIG_HOME: ${PRJ_CONFIG_HOME#"${PRJ_ROOT}"/}"

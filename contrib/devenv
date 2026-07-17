@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+# devenv is the combined entrypoint and includes the base direnv integration.
+# shellcheck source=direnv
+source "$(dirname "${BASH_SOURCE[0]}")/direnv"
+
+_prj_devenv_args=()
+
+_prj_devenv_silence_requested() {
+	case "${DIRENV_SILENCE:-}" in
+		0 | false | FALSE | no | NO | off | OFF)
+			unset DIRENV_PRJ_SILENCE DIRENV_LOG_FORMAT
+			return 1
+			;;
+		1 | true | TRUE | yes | YES | on | ON) return 0 ;;
+	esac
+
+	[[ -n "${DIRENV_PRJ_SILENCE+x}" || -n "${CLAUDE_CODE_SESSION_ID:-}" || -n "${CODEX_THREAD_ID:-}" ]]
+}
+
+# Keep both direnv and devenv quiet inside agent-managed sessions.
+if _prj_devenv_silence_requested; then
+	export DIRENV_SILENCE="${DIRENV_SILENCE:-1}"
+	export DIRENV_LOG_FORMAT=
+	_prj_devenv_args+=(--quiet)
+fi
+
+unset -f _prj_devenv_silence_requested
+
+eval "$(devenv direnvrc "${_prj_devenv_args[@]}")"
+
+if ((${#_prj_devenv_args[@]})); then
+	# Calling the generated function directly also skips direnv's `using` log.
+	use_devenv "${_prj_devenv_args[@]}"
+else
+	use devenv
+fi
+
+unset _prj_devenv_args

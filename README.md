@@ -43,6 +43,25 @@ In alphabetical order.
 
 PRs to add your own are welcome!
 
+## Shell integrations
+
+The `contrib/direnv` integration exports the PRJ base directories and keeps its
+status output quiet when it runs inside a Claude Code or Codex session.
+
+For projects using [devenv](https://devenv.sh/), source `contrib/devenv` from
+`.envrc`. It includes the base `contrib/direnv` integration, so devenv projects
+need only one entrypoint:
+
+```bash
+source /path/to/prj-spec/contrib/devenv
+```
+
+The devenv integration preserves normal logs in interactive development
+shells. When `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID` is non-empty, it also
+clears `DIRENV_LOG_FORMAT` and passes `--quiet` to devenv. Set
+`DIRENV_SILENCE=1` to request the same behavior manually, or
+`DIRENV_SILENCE=0` to force normal logs.
+
 ## Related projects
 
 * [dot-config](https://dot-config.github.io/) - defines `.config` for projects
