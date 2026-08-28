@@ -117,6 +117,68 @@ unset -f _prj_direnv_silence_requested
 # shellcheck disable=SC2034
 direnv_layout_dir="${PRJ_DATA_HOME}/direnv"
 
+_prj_write_devenv_profile_exec() {
+	local launcher launcher_dir temporary
+	launcher="${PRJ_ROOT}/.devenv/devenv-profile-exec.sh"
+	launcher_dir="${launcher%/*}"
+	[[ -d "${launcher_dir}" ]] || return 0
+
+	temporary="${launcher}.tmp.$$"
+	(
+		umask 077
+		cat >"${temporary}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if (( $# == 0 )); then
+	printf 'usage: %s <command> [args...]\n' "$0" >&2
+	exit 2
+fi
+
+launcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "${launcher_dir}/.." && pwd -P)"
+profile_link="${repo_root}/.devenv/profile"
+[[ -d "${profile_link}" ]] || {
+	printf '[devenv-profile-exec] missing materialized profile: %s\n' "${profile_link}" >&2
+	exit 75
+}
+profile="$(cd -- "${profile_link}" && pwd -P)"
+[[ "${profile}" == /nix/store/* && -x "${profile}/bin/bash" && -f "${profile}/setup" ]] || {
+	printf '[devenv-profile-exec] unusable materialized profile: %s\n' "${profile}" >&2
+	exit 75
+}
+
+export DEVENV_PROFILE="${profile}"
+export DEVENV_ROOT="${repo_root}"
+export DIRENV_SILENCE=1
+export DIRENV_PRJ_SILENCE=1
+
+cd -- "${repo_root}"
+if [[ "${DEVENV_PROFILE_EXEC_FULL:-0}" != 1 ]]; then
+	export PATH="${profile}/bin:${PATH}"
+	exec "$@"
+fi
+
+export DEVENV_STATE="${repo_root}/.devenv/state"
+export NIX_BUILD_TOP="${DEVENV_STATE}/build-top"
+mkdir -p -- "${NIX_BUILD_TOP}"
+exec "${profile}/bin/bash" --noprofile --norc -c '
+	set -e
+	set +u
+	export outputs=out
+	export out="$DEVENV_PROFILE"
+	export buildInputs="$DEVENV_PROFILE"
+	source "$DEVENV_PROFILE/setup"
+	unset outputs out buildInputs NIX_ENFORCE_PURITY
+	export IN_NIX_SHELL=impure
+	exec "$@"
+' devenv-profile-exec "$@"
+EOF
+		chmod 700 -- "${temporary}"
+		mv -f -- "${temporary}" "${launcher}"
+	)
+}
+
 # Activate devenv when the project declares a devenv configuration.
 if [[ -f "${PRJ_ROOT}/devenv.nix" || -f "${PRJ_ROOT}/devenv.yaml" ]]; then
 	if ! command -v devenv >/dev/null 2>&1; then
@@ -138,5 +200,6 @@ if [[ -f "${PRJ_ROOT}/devenv.nix" || -f "${PRJ_ROOT}/devenv.yaml" ]]; then
 		use devenv
 	fi
 
+	_prj_write_devenv_profile_exec
 	unset _prj_devenv_args
 fi
