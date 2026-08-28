@@ -154,7 +154,7 @@ export DIRENV_SILENCE=1
 export DIRENV_PRJ_SILENCE=1
 
 cd -- "${repo_root}"
-if [[ "${DEVENV_PROFILE_EXEC_FULL:-0}" != 1 ]]; then
+if [[ "${DEVENV_PROFILE_EXEC_BIN_ONLY:-0}" == 1 ]]; then
 	export PATH="${profile}/bin:${PATH}"
 	exec "$@"
 fi
