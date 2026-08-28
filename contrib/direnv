@@ -119,7 +119,7 @@ direnv_layout_dir="${PRJ_DATA_HOME}/direnv"
 
 _prj_write_devenv_profile_exec() {
 	local launcher launcher_dir temporary
-	launcher="${PRJ_ROOT}/.devenv/devenv-profile-exec.sh"
+	launcher="${PRJ_ROOT}/.devenv/devenv-profile-exec"
 	launcher_dir="${launcher%/*}"
 	[[ -d "${launcher_dir}" ]] || return 0
 
@@ -176,6 +176,7 @@ exec "${profile}/bin/bash" --noprofile --norc -c '
 EOF
 		chmod 700 -- "${temporary}"
 		mv -f -- "${temporary}" "${launcher}"
+		rm -f -- "${launcher}.sh"
 	)
 }
 
