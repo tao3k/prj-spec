@@ -189,11 +189,7 @@ request_dir="${requests}/request.$$.$RANDOM"
 cleanup() { rm -rf -- "${temporary}" "${request_dir}"; }
 trap cleanup EXIT INT TERM
 printf '%s\0' "$@" > "${temporary}/argv"
-if [[ -t 0 ]]; then
-	: > "${temporary}/stdin"
-else
-	cat > "${temporary}/stdin"
-fi
+: > "${temporary}/stdin"
 mv -- "${temporary}" "${request_dir}"
 temporary=""
 while [[ ! -e "${request_dir}/done" ]]; do
