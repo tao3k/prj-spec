@@ -130,54 +130,105 @@ _prj_write_devenv_profile_exec() {
 #!/usr/bin/env bash
 set -euo pipefail
 
+launcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "${launcher_dir}/.." && pwd -P)"
+state_root="${launcher_dir}/state/direnv-profile-session"
+
+run_request() {
+	local request_dir status
+	request_dir="$1"
+	(
+		local -a argv=()
+		while IFS= read -r -d '' argument; do
+			argv+=("${argument}")
+		done < "${request_dir}/argv"
+		if (( ${#argv[@]} == 0 )); then
+			printf 'missing command\n' > "${request_dir}/stderr"
+			status=2
+		else
+			cd -- "${repo_root}"
+			set +e
+			"${argv[@]}" < "${request_dir}/stdin" > "${request_dir}/stdout" 2> "${request_dir}/stderr"
+			status=$?
+			set -e
+		fi
+		printf '%s\n' "${status}" > "${request_dir}/status.tmp"
+		mv -f -- "${request_dir}/status.tmp" "${request_dir}/status"
+		: > "${request_dir}/done"
+	) &
+}
+
+if [[ "${1:-}" == --server ]]; then
+	[[ $# == 2 ]] || exit 2
+	state_root="$2"
+	requests="${state_root}/requests"
+	while :; do
+		for request_dir in "${requests}"/*; do
+			[[ -d "${request_dir}" && -f "${request_dir}/argv" && ! -e "${request_dir}/done" ]] || continue
+			mkdir -- "${request_dir}/running" 2>/dev/null || continue
+			run_request "${request_dir}"
+		done
+		sleep 0.05
+	done
+fi
+
 if (( $# == 0 )); then
 	printf 'usage: %s <command> [args...]\n' "$0" >&2
 	exit 2
 fi
 
-launcher_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-repo_root="$(cd -- "${launcher_dir}/.." && pwd -P)"
-profile_link="${repo_root}/.devenv/profile"
-[[ -d "${profile_link}" ]] || {
-	printf '[devenv-profile-exec] missing materialized profile: %s\n' "${profile_link}" >&2
+pid_file="${state_root}/pid"
+if [[ ! -r "${pid_file}" ]] || ! kill -0 "$(<"${pid_file}")" 2>/dev/null; then
+	printf '[devenv-profile-exec] no live direnv session; reactivate the workspace with direnv\n' >&2
 	exit 75
-}
-profile="$(cd -- "${profile_link}" && pwd -P)"
-[[ "${profile}" == /nix/store/* && -x "${profile}/bin/bash" && -f "${profile}/setup" ]] || {
-	printf '[devenv-profile-exec] unusable materialized profile: %s\n' "${profile}" >&2
-	exit 75
-}
-
-export DEVENV_PROFILE="${profile}"
-export DEVENV_ROOT="${repo_root}"
-export DIRENV_SILENCE=1
-export DIRENV_PRJ_SILENCE=1
-
-cd -- "${repo_root}"
-if [[ "${DEVENV_PROFILE_EXEC_BIN_ONLY:-0}" == 1 ]]; then
-	export PATH="${profile}/bin:${PATH}"
-	exec "$@"
 fi
 
-export DEVENV_STATE="${repo_root}/.devenv/state"
-export NIX_BUILD_TOP="${DEVENV_STATE}/build-top"
-mkdir -p -- "${NIX_BUILD_TOP}"
-exec "${profile}/bin/bash" --noprofile --norc -c '
-	set -e
-	set +u
-	export outputs=out
-	export out="$DEVENV_PROFILE"
-	export buildInputs="$DEVENV_PROFILE"
-	source "$DEVENV_PROFILE/setup"
-	unset outputs out buildInputs NIX_ENFORCE_PURITY
-	export IN_NIX_SHELL=impure
-	exec "$@"
-' devenv-profile-exec "$@"
+requests="${state_root}/requests"
+temporary="$(mktemp -d "${requests}/.request.XXXXXX")"
+request_dir="${requests}/request.$$.$RANDOM"
+cleanup() { rm -rf -- "${temporary}" "${request_dir}"; }
+trap cleanup EXIT INT TERM
+printf '%s\0' "$@" > "${temporary}/argv"
+if [[ -t 0 ]]; then
+	: > "${temporary}/stdin"
+else
+	cat > "${temporary}/stdin"
+fi
+mv -- "${temporary}" "${request_dir}"
+temporary=""
+while [[ ! -e "${request_dir}/done" ]]; do
+	sleep 0.05
+done
+cat -- "${request_dir}/stdout"
+cat -- "${request_dir}/stderr" >&2
+status="$(<"${request_dir}/status")"
+exit "${status}"
 EOF
 		chmod 700 -- "${temporary}"
 		mv -f -- "${temporary}" "${launcher}"
 		rm -f -- "${launcher}.sh"
 	)
+}
+
+_prj_start_devenv_profile_session() {
+	local launcher state_root previous_pid
+	launcher="${PRJ_ROOT}/.devenv/devenv-profile-exec"
+	state_root="${PRJ_ROOT}/.devenv/state/direnv-profile-session"
+	[[ -x "${launcher}" ]] || return 1
+	mkdir -p -- "${state_root}/requests"
+	chmod 700 -- "${state_root}" "${state_root}/requests"
+	previous_pid=""
+	if [[ -r "${state_root}/pid" ]]; then
+		previous_pid="$(<"${state_root}/pid")"
+	fi
+	if [[ -n "${previous_pid}" ]] && kill -0 "${previous_pid}" 2>/dev/null; then
+		kill "${previous_pid}" 2>/dev/null || true
+	fi
+	rm -rf -- "${state_root}/requests"
+	mkdir -p -- "${state_root}/requests"
+	chmod 700 -- "${state_root}/requests"
+	nohup "${launcher}" --server "${state_root}" >"${state_root}/server.log" 2>&1 < /dev/null &
+	printf '%s\n' "$!" > "${state_root}/pid"
 }
 
 # Activate devenv when the project declares a devenv configuration.
@@ -202,5 +253,6 @@ if [[ -f "${PRJ_ROOT}/devenv.nix" || -f "${PRJ_ROOT}/devenv.yaml" ]]; then
 	fi
 
 	_prj_write_devenv_profile_exec
+	_prj_start_devenv_profile_session
 	unset _prj_devenv_args
 fi
