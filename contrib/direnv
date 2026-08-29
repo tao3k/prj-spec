@@ -159,7 +159,7 @@ shell="${launcher_dir}/bash-bash/bin/bash"
 	printf '[devenv-profile-exec] missing .devenv Bash cache; reactivate the workspace with direnv\n' >&2
 	exit 75
 }
-exec /usr/bin/env -i "${shell}" --noprofile --norc -c '
+exec "${shell}" --noprofile --norc -c '
 	set -e
 	source "$1"
 	cd -- "$2"
