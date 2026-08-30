@@ -130,7 +130,13 @@ _prj_write_devenv_profile_exec() {
 	(
 		umask 077
 		devenv_bin="${DEVENV_BIN:-$(command -v devenv)}"
-		"${devenv_bin}" direnv-export >"${temporary}"
+		"${devenv_bin}" direnv-export | /usr/bin/awk '
+			$0 == "eval \"${shellHook:-}\"" {
+				print "unset shellHook"
+				next
+			}
+			{ print }
+		' >"${temporary}"
 		chmod 600 -- "${temporary}"
 		mv -f -- "${temporary}" "${snapshot}"
 	)
